@@ -1,0 +1,26 @@
+{
+  "name": "cwt",
+  "version": "1.0.0",
+  "description": "CLI tool for managing git worktrees with automatic environment setup",
+  "type": "module",
+  "bin": {
+    "cwt": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "glob": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

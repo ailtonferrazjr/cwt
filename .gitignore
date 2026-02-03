@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Package manager locks (keep pnpm-lock.yaml)
+package-lock.json
+yarn.lock
+bun.lockb
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Claude Code local settings (contains user-specific paths)
+.claude/settings.local.json
+
+# Worktree directories (when using cwt itself)
+.worktrees/
+.worktree-docs/
