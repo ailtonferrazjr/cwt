@@ -22,7 +22,7 @@ Git worktrees let you work on multiple branches simultaneously without stashing 
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/cwt.git
+git clone https://github.com/ailtonferrazjr/cwt
 cd cwt
 
 # Install dependencies
