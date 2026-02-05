@@ -1,4 +1,6 @@
 import { resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { unlink } from "node:fs/promises";
 import chalk from "chalk";
 import type { RemoveOptions } from "../types.js";
 import {
@@ -8,12 +10,15 @@ import {
   pruneWorktrees,
   removeWorktree,
 } from "../lib/git.js";
+import { loadConfig } from "../lib/config.js";
+import { getActiveDocPath, getWorktreeDocPath } from "../lib/docs.js";
 
 export async function removeCommand(
   name: string,
   options: RemoveOptions
 ): Promise<void> {
   const repoRoot = getRepoRoot();
+  const config = await loadConfig(repoRoot);
   const worktrees = listWorktrees();
 
   // Find worktree by name (can match path or branch)
@@ -42,6 +47,14 @@ export async function removeCommand(
     process.exit(1);
   }
 
+  // Check if worktree is locked
+  if (worktree.isLocked && !options.force) {
+    console.error(chalk.red("Cannot remove a locked worktree"));
+    console.log(chalk.dim("  Use --force to remove anyway, or unlock with:"));
+    console.log(chalk.dim(`    git worktree unlock "${worktree.path}"`));
+    process.exit(1);
+  }
+
   const branchToDelete = worktree.branch;
 
   // Remove worktree
@@ -58,6 +71,18 @@ export async function removeCommand(
 
   // Prune worktrees
   pruneWorktrees();
+
+  // Clean up orphaned legacy active doc if it exists
+  const worktreeName = worktree.path.split("/").pop() ?? name;
+  const legacyDocPath = getActiveDocPath(repoRoot, config.docsDir, worktreeName);
+  if (existsSync(legacyDocPath)) {
+    try {
+      await unlink(legacyDocPath);
+      console.log(chalk.green(`✓ Removed orphaned doc: ${worktreeName}.md`));
+    } catch {
+      console.log(chalk.yellow(`⚠ Could not remove orphaned doc: ${worktreeName}.md`));
+    }
+  }
 
   // Optionally delete the branch
   if (options.deleteBranch && branchToDelete && branchToDelete !== "(detached)") {

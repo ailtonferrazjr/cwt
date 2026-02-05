@@ -7,6 +7,7 @@ import {
   detectWorktreeContext,
   getRepoRoot,
   hasChangesInPath,
+  hasUncommittedChanges,
   listWorktrees,
   mergeBranch,
   mergeBranchWithMessage,
@@ -87,8 +88,23 @@ export async function finishCommand(
     process.exit(1);
   }
 
+  if (worktree.isLocked) {
+    console.error(chalk.red("Cannot finish a locked worktree"));
+    console.log(chalk.dim("  Unlock it first with: git worktree unlock \"" + worktree.path + "\""));
+    process.exit(1);
+  }
+
   console.log(chalk.blue(`\nFinishing worktree: ${worktree.path}`));
   console.log(chalk.dim(`Branch: ${branchToMerge}\n`));
+
+  // Check for uncommitted changes (excluding WORKTREE.md)
+  if (hasUncommittedChanges(worktree.path)) {
+    console.error(chalk.red("⚠ Worktree has uncommitted changes"));
+    console.log(chalk.dim("  Commit or stash your changes before finishing."));
+    console.log(chalk.dim(`  To discard changes and finish anyway, use:`));
+    console.log(chalk.dim(`    git -C "${worktree.path}" checkout . && cwt finish ${targetName}`));
+    process.exit(1);
+  }
 
   // Load config for docs
   const config = await loadConfig(repoRoot);

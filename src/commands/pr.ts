@@ -5,10 +5,12 @@ import chalk from "chalk";
 import { loadConfig } from "../lib/config.js";
 import {
   detectWorktreeContext,
+  getRepoName,
   getRepoRoot,
   getCurrentBranch,
 } from "../lib/git.js";
-import { getActiveDocPath } from "../lib/docs.js";
+import { getActiveDocPath, getWorktreeDocPath } from "../lib/docs.js";
+import { join } from "node:path";
 
 export interface PrOptions {
   self?: boolean;
@@ -140,9 +142,17 @@ export async function prCommand(
   }
 
   const config = await loadConfig(repoRoot);
+  const repoName = getRepoName(repoRoot);
 
-  // Check if doc exists
-  const docPath = getActiveDocPath(repoRoot, config.docsDir, worktreeName);
+  // Determine worktree path for checking WORKTREE.md
+  const worktreePath = options.self
+    ? process.cwd()
+    : join(repoRoot, config.worktreeDir.replace("{name}", worktreeName).replace("{repo}", repoName));
+
+  // Check for doc in WORKTREE.md first (new location), then fall back to legacy active dir
+  const worktreeDocPath = getWorktreeDocPath(worktreePath);
+  const legacyDocPath = getActiveDocPath(repoRoot, config.docsDir, worktreeName);
+  const docPath = existsSync(worktreeDocPath) ? worktreeDocPath : legacyDocPath;
 
   let prTitle = worktreeName.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   let prBody = "";
@@ -152,7 +162,8 @@ export async function prCommand(
     const parsed = parseDocForPr(content, worktreeName);
     prTitle = parsed.title;
     prBody = buildPrBody(parsed);
-    console.log(chalk.green(`✓ Found documentation: ${worktreeName}.md`));
+    const docName = docPath === worktreeDocPath ? "WORKTREE.md" : `${worktreeName}.md`;
+    console.log(chalk.green(`✓ Found documentation: ${docName}`));
   } else {
     console.log(chalk.yellow(`⚠ No documentation found for: ${worktreeName}`));
     console.log(chalk.dim("Creating PR with minimal description."));

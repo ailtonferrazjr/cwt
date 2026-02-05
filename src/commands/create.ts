@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { existsSync } from "node:fs";
 import { execSync } from "node:child_process";
 import chalk from "chalk";
 import type { CreateOptions } from "../types.js";
@@ -6,6 +7,7 @@ import { loadConfig, resolveWorktreeDir } from "../lib/config.js";
 import { detectPackageManager, getInstallCommand } from "../lib/detect.js";
 import { copyEnvFiles } from "../lib/files.js";
 import {
+  branchCheckedOutIn,
   branchExists,
   createWorktree,
   getRepoName,
@@ -53,6 +55,24 @@ export async function createCommand(
 
   // Check if branch exists
   const existingBranch = branchExists(branchName);
+
+  // Check if branch is already checked out in another worktree
+  if (existingBranch) {
+    const checkedOutIn = branchCheckedOutIn(branchName);
+    if (checkedOutIn) {
+      console.error(chalk.red(`Branch '${branchName}' is already checked out in:`));
+      console.error(chalk.dim(`  ${checkedOutIn}`));
+      console.log(chalk.dim("\nUse a different branch name with -b <branch>"));
+      process.exit(1);
+    }
+  }
+
+  // Check if worktree directory already exists
+  if (existsSync(worktreeDir)) {
+    console.error(chalk.red(`Directory already exists: ${worktreeDir}`));
+    console.log(chalk.dim("\nEither remove it or use -d <dir> to specify a different path"));
+    process.exit(1);
+  }
 
   console.log(chalk.blue(`Creating worktree at ${chalk.bold(worktreeDir)}`));
 
