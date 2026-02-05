@@ -2,12 +2,14 @@ import { readFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import chalk from "chalk";
-import { getRepoRoot } from "../lib/git.js";
-import { loadConfig } from "../lib/config.js";
+import { getRepoRoot, listWorktrees } from "../lib/git.js";
+import { loadConfig, resolveWorktreeDir } from "../lib/config.js";
 import {
   getDocsDir,
   DOCS_ACTIVE_DIR,
   DOCS_COMPLETED_DIR,
+  WORKTREE_DOC_FILENAME,
+  getWorktreeDocPath,
 } from "../lib/docs.js";
 
 export interface DocsOptions {
@@ -22,10 +24,7 @@ interface DocEntry {
   date?: string;
 }
 
-async function listDocsInDir(
-  dir: string,
-  type: "active" | "completed"
-): Promise<DocEntry[]> {
+async function listCompletedDocs(dir: string): Promise<DocEntry[]> {
   if (!existsSync(dir)) {
     return [];
   }
@@ -40,17 +39,42 @@ async function listDocsInDir(
       return {
         name: dateMatch ? dateMatch[2] : name,
         path: join(dir, f),
-        type,
+        type: "completed" as const,
         date: dateMatch ? dateMatch[1] : undefined,
       };
     })
     .sort((a, b) => {
-      // Sort by date descending for completed, alphabetically for active
-      if (type === "completed" && a.date && b.date) {
+      if (a.date && b.date) {
         return b.date.localeCompare(a.date);
       }
       return a.name.localeCompare(b.name);
     });
+}
+
+/**
+ * Find active docs by looking for WORKTREE.md in each worktree
+ */
+async function listActiveDocs(repoRoot: string): Promise<DocEntry[]> {
+  const worktrees = listWorktrees();
+  const activeDocs: DocEntry[] = [];
+
+  for (const wt of worktrees) {
+    // Skip the main worktree
+    if (wt.path === repoRoot) continue;
+
+    const docPath = getWorktreeDocPath(wt.path);
+    if (existsSync(docPath)) {
+      // Extract worktree name from path (last segment)
+      const name = wt.path.split("/").pop() || wt.branch || "unknown";
+      activeDocs.push({
+        name,
+        path: docPath,
+        type: "active",
+      });
+    }
+  }
+
+  return activeDocs.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export async function docsListCommand(options: DocsOptions): Promise<void> {
@@ -74,11 +98,10 @@ export async function docsListCommand(options: DocsOptions): Promise<void> {
   const showActive = options.active || (!options.active && !options.completed);
   const showCompleted = options.completed || (!options.active && !options.completed);
 
-  const activeDocs = showActive
-    ? await listDocsInDir(join(docsDir, DOCS_ACTIVE_DIR), "active")
-    : [];
+  // Active docs now live in worktrees as WORKTREE.md
+  const activeDocs = showActive ? await listActiveDocs(repoRoot) : [];
   const completedDocs = showCompleted
-    ? await listDocsInDir(join(docsDir, DOCS_COMPLETED_DIR), "completed")
+    ? await listCompletedDocs(join(docsDir, DOCS_COMPLETED_DIR))
     : [];
 
   if (activeDocs.length === 0 && completedDocs.length === 0) {
@@ -110,20 +133,24 @@ export async function docsViewCommand(name: string): Promise<void> {
   const config = await loadConfig(repoRoot);
   const docsDir = getDocsDir(repoRoot, config.docsDir);
 
-  // Try to find the doc in active or completed
-  const activeDir = join(docsDir, DOCS_ACTIVE_DIR);
-  const completedDir = join(docsDir, DOCS_COMPLETED_DIR);
-
-  // Check active first
-  const activePath = join(activeDir, `${name}.md`);
-  if (existsSync(activePath)) {
-    const content = await readFile(activePath, "utf-8");
-    console.log(chalk.blue.bold(`\n📄 ${name} (active)\n`));
-    console.log(content);
-    return;
+  // Check active docs in worktrees first
+  const worktrees = listWorktrees();
+  for (const wt of worktrees) {
+    if (wt.path === repoRoot) continue;
+    const wtName = wt.path.split("/").pop();
+    if (wtName === name) {
+      const docPath = getWorktreeDocPath(wt.path);
+      if (existsSync(docPath)) {
+        const content = await readFile(docPath, "utf-8");
+        console.log(chalk.blue.bold(`\n📄 ${name} (active)\n`));
+        console.log(content);
+        return;
+      }
+    }
   }
 
   // Check completed (need to search for files ending with -name.md)
+  const completedDir = join(docsDir, DOCS_COMPLETED_DIR);
   if (existsSync(completedDir)) {
     const files = await readdir(completedDir);
     const matchingFile = files.find(
@@ -148,18 +175,22 @@ export async function docsOpenCommand(name: string): Promise<void> {
   const config = await loadConfig(repoRoot);
   const docsDir = getDocsDir(repoRoot, config.docsDir);
 
-  // Try to find the doc path
-  const activeDir = join(docsDir, DOCS_ACTIVE_DIR);
-  const completedDir = join(docsDir, DOCS_COMPLETED_DIR);
-
-  // Check active first
-  const activePath = join(activeDir, `${name}.md`);
-  if (existsSync(activePath)) {
-    console.log(activePath);
-    return;
+  // Check active docs in worktrees first
+  const worktrees = listWorktrees();
+  for (const wt of worktrees) {
+    if (wt.path === repoRoot) continue;
+    const wtName = wt.path.split("/").pop();
+    if (wtName === name) {
+      const docPath = getWorktreeDocPath(wt.path);
+      if (existsSync(docPath)) {
+        console.log(docPath);
+        return;
+      }
+    }
   }
 
   // Check completed
+  const completedDir = join(docsDir, DOCS_COMPLETED_DIR);
   if (existsSync(completedDir)) {
     const files = await readdir(completedDir);
     const matchingFile = files.find(

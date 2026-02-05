@@ -174,3 +174,110 @@ export function mergeBranchWithMessage(branch: string, message: string): void {
     throw new Error(`Failed to merge branch: ${branch}`);
   }
 }
+
+/**
+ * Check if there are any changes in the given path (staged or unstaged)
+ */
+export function hasChangesInPath(path: string): boolean {
+  // Check for unstaged changes
+  const unstaged = spawnSync("git", ["diff", "--quiet", "--", path], {
+    encoding: "utf-8",
+    stdio: "pipe",
+  });
+
+  // Check for staged changes
+  const staged = spawnSync("git", ["diff", "--cached", "--quiet", "--", path], {
+    encoding: "utf-8",
+    stdio: "pipe",
+  });
+
+  // Check for untracked files
+  const untracked = execSync(`git ls-files --others --exclude-standard -- "${path}"`, {
+    encoding: "utf-8",
+  }).trim();
+
+  // Check for deleted files
+  const deleted = execSync(`git ls-files --deleted -- "${path}"`, {
+    encoding: "utf-8",
+  }).trim();
+
+  return unstaged.status !== 0 || staged.status !== 0 || untracked.length > 0 || deleted.length > 0;
+}
+
+/**
+ * Commit doc changes after finishing a worktree
+ */
+/**
+ * Remove WORKTREE.md from git tracking in a worktree
+ * This prevents merge conflicts when finishing worktrees
+ */
+export function removeWorktreeDocFromGit(worktreePath: string): boolean {
+  // Check if WORKTREE.md exists and is tracked
+  const lsResult = spawnSync(
+    "git",
+    ["-C", worktreePath, "ls-files", "--error-unmatch", "WORKTREE.md"],
+    { encoding: "utf-8", stdio: "pipe" }
+  );
+
+  if (lsResult.status !== 0) {
+    // File not tracked, nothing to do
+    return false;
+  }
+
+  // Remove from git (but keep local file for archiving)
+  const rmResult = spawnSync(
+    "git",
+    ["-C", worktreePath, "rm", "--cached", "WORKTREE.md"],
+    { encoding: "utf-8", stdio: "pipe" }
+  );
+
+  if (rmResult.status !== 0) {
+    return false;
+  }
+
+  // Commit the removal
+  const commitResult = spawnSync(
+    "git",
+    ["-C", worktreePath, "commit", "-m", "chore: remove worktree doc before merge"],
+    { encoding: "utf-8", stdio: "pipe" }
+  );
+
+  return commitResult.status === 0;
+}
+
+export function commitDocChanges(docsDir: string, worktreeName: string): void {
+  // Stage all changes in the docs directory
+  const addResult = spawnSync("git", ["add", docsDir], {
+    encoding: "utf-8",
+    stdio: "pipe",
+  });
+
+  if (addResult.status !== 0) {
+    throw new Error(`Failed to stage doc changes`);
+  }
+
+  // Check if there's anything to commit
+  const statusResult = spawnSync("git", ["diff", "--cached", "--quiet"], {
+    encoding: "utf-8",
+    stdio: "pipe",
+  });
+
+  // status 0 means no changes, non-zero means there are changes
+  if (statusResult.status === 0) {
+    return; // Nothing to commit
+  }
+
+  // Commit the doc changes
+  const commitResult = spawnSync(
+    "git",
+    ["commit", "-m", `docs: archive worktree doc for ${worktreeName}`],
+    {
+      encoding: "utf-8",
+      stdio: "pipe",
+    }
+  );
+
+  if (commitResult.status !== 0) {
+    throw new Error(`Failed to commit doc changes`);
+  }
+}
