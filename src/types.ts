@@ -40,6 +40,7 @@ export interface WorktreeInfo {
   branch: string;
   commit: string;
   isBare: boolean;
+  isLocked: boolean;
 }
 
 export type PackageManager = "npm" | "pnpm" | "yarn" | "bun";

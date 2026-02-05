@@ -1,7 +1,7 @@
 import { readFile, writeFile, mkdir, rename, copyFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import type { WorktreeDocMetadata } from "../types.js";
 
 export const DOCS_TEMPLATE_FILE = "worktree.md";
@@ -195,16 +195,19 @@ export async function createDocFromTemplate(
 
 export function getCommitsForBranch(branch: string, baseBranch = "main"): string[] {
   try {
-    const output = execSync(
-      `git log ${baseBranch}..${branch} --pretty=format:"%h %s"`,
-      { encoding: "utf-8" }
+    // Use spawnSync to avoid shell injection with branch names
+    const result = spawnSync(
+      "git",
+      ["log", `${baseBranch}..${branch}`, "--pretty=format:%h %s"],
+      { encoding: "utf-8", stdio: "pipe" }
     );
 
-    if (!output.trim()) {
+    const output = (result.stdout || "").trim();
+    if (!output) {
       return [];
     }
 
-    return output.trim().split("\n");
+    return output.split("\n");
   } catch {
     return [];
   }
@@ -213,11 +216,34 @@ export function getCommitsForBranch(branch: string, baseBranch = "main"): string
 export function getCurrentBaseBranch(): string {
   try {
     // Try to get the default branch from remote
-    const result = execSync(
-      "git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || echo refs/heads/main",
-      { encoding: "utf-8" }
+    const result = spawnSync(
+      "git",
+      ["symbolic-ref", "refs/remotes/origin/HEAD"],
+      { encoding: "utf-8", stdio: "pipe" }
     );
-    return result.trim().replace("refs/remotes/origin/", "").replace("refs/heads/", "");
+
+    if (result.status === 0 && result.stdout) {
+      return result.stdout.trim().replace("refs/remotes/origin/", "");
+    }
+
+    // Fallback: check if 'main' or 'master' branch exists
+    const mainCheck = spawnSync("git", ["rev-parse", "--verify", "main"], {
+      encoding: "utf-8",
+      stdio: "pipe",
+    });
+    if (mainCheck.status === 0) {
+      return "main";
+    }
+
+    const masterCheck = spawnSync("git", ["rev-parse", "--verify", "master"], {
+      encoding: "utf-8",
+      stdio: "pipe",
+    });
+    if (masterCheck.status === 0) {
+      return "master";
+    }
+
+    return "main";
   } catch {
     return "main";
   }

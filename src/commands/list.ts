@@ -25,7 +25,9 @@ export async function listCommand(): Promise<void> {
         ? chalk.yellow(wt.branch)
         : chalk.green(wt.branch);
 
-    console.log(`  ${chalk.bold(wt.path)}`);
+    const lockedIndicator = wt.isLocked ? chalk.yellow(" [locked]") : "";
+
+    console.log(`  ${chalk.bold(wt.path)}${lockedIndicator}`);
     console.log(`    Branch: ${branchDisplay}`);
     console.log(`    Commit: ${chalk.dim(wt.commit?.slice(0, 8) ?? "N/A")}`);
     console.log();
