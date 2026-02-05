@@ -87,12 +87,21 @@ export function getDocsDir(repoRoot: string, docsDir: string): string {
   return join(repoRoot, docsDir);
 }
 
+export const WORKTREE_DOC_FILENAME = "WORKTREE.md";
+
 export function getActiveDocPath(
   repoRoot: string,
   docsDir: string,
   name: string
 ): string {
   return join(repoRoot, docsDir, DOCS_ACTIVE_DIR, `${name}.md`);
+}
+
+/**
+ * Get path to the worktree doc (lives in the worktree root)
+ */
+export function getWorktreeDocPath(worktreeDir: string): string {
+  return join(worktreeDir, WORKTREE_DOC_FILENAME);
 }
 
 export function getCompletedDocPath(
@@ -154,12 +163,18 @@ export async function createDocFromTemplate(
   repoRoot: string,
   docsDir: string,
   name: string,
-  branch: string
+  branch: string,
+  worktreeDir?: string
 ): Promise<string> {
+  // Ensure docs structure exists in main repo (for templates and completed docs)
   await ensureDocsStructure(repoRoot, docsDir);
 
   const templatePath = getTemplatePath(repoRoot, docsDir);
-  const docPath = getActiveDocPath(repoRoot, docsDir, name);
+
+  // If worktreeDir provided, create doc in worktree; otherwise use legacy location
+  const docPath = worktreeDir
+    ? getWorktreeDocPath(worktreeDir)
+    : getActiveDocPath(repoRoot, docsDir, name);
 
   let template = DEFAULT_TEMPLATE;
 
@@ -212,9 +227,16 @@ export async function archiveDoc(
   repoRoot: string,
   docsDir: string,
   name: string,
-  branch: string
+  branch: string,
+  worktreeDir?: string
 ): Promise<{ archived: boolean; path: string | null }> {
-  const activeDocPath = getActiveDocPath(repoRoot, docsDir, name);
+  // Check worktree location first, fall back to legacy active location
+  const worktreeDocPath = worktreeDir ? getWorktreeDocPath(worktreeDir) : null;
+  const legacyDocPath = getActiveDocPath(repoRoot, docsDir, name);
+
+  const activeDocPath = worktreeDocPath && existsSync(worktreeDocPath)
+    ? worktreeDocPath
+    : legacyDocPath;
 
   if (!existsSync(activeDocPath)) {
     return { archived: false, path: null };
@@ -274,7 +296,12 @@ ${commits.length > 0 ? commits.map((c) => `- \`${c}\``).join("\n") : "_No commit
 export function activeDocExists(
   repoRoot: string,
   docsDir: string,
-  name: string
+  name: string,
+  worktreeDir?: string
 ): boolean {
+  // Check worktree location first, then legacy location
+  if (worktreeDir && existsSync(getWorktreeDocPath(worktreeDir))) {
+    return true;
+  }
   return existsSync(getActiveDocPath(repoRoot, docsDir, name));
 }

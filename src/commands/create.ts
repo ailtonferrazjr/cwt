@@ -70,16 +70,17 @@ export async function createCommand(
     process.exit(1);
   }
 
-  // Create documentation file
+  // Create documentation file in the worktree
   if (config.docsEnabled) {
     try {
       const docPath = await createDocFromTemplate(
         repoRoot,
         config.docsDir,
         name,
-        branchName
+        branchName,
+        worktreeDir
       );
-      console.log(chalk.green(`✓ Created doc: ${config.docsDir}/active/${name}.md`));
+      console.log(chalk.green(`✓ Created doc: WORKTREE.md`));
     } catch (error) {
       console.log(chalk.yellow(`⚠ Could not create documentation file`));
     }

@@ -5,7 +5,7 @@ import type { WorktreeConfig } from "../types.js";
 
 const DEFAULT_CONFIG: WorktreeConfig = {
   copyFiles: [".env", ".env.local", ".env.development", ".env.development.local"],
-  copyPatterns: [],
+  copyPatterns: [".claude/**"],
   setupCommands: [],
   worktreeDir: ".worktrees/{name}",
   branchPrefix: "",

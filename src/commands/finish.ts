@@ -2,15 +2,18 @@ import { resolve } from "node:path";
 import chalk from "chalk";
 import type { FinishOptions } from "../types.js";
 import {
+  commitDocChanges,
   deleteBranch,
   detectWorktreeContext,
   getRepoRoot,
+  hasChangesInPath,
   listWorktrees,
   mergeBranch,
   mergeBranchWithMessage,
   pruneWorktrees,
   pushToRemote,
   removeWorktree,
+  removeWorktreeDocFromGit,
 } from "../lib/git.js";
 import { loadConfig } from "../lib/config.js";
 import { archiveDoc, activeDocExists } from "../lib/docs.js";
@@ -91,9 +94,10 @@ export async function finishCommand(
   const config = await loadConfig(repoRoot);
 
   // 0. Archive documentation (before merge so we can capture branch commits)
-  if (config.docsEnabled && activeDocExists(repoRoot, config.docsDir, targetName)) {
+  // Pass worktree path so it can find the doc in WORKTREE.md (or fall back to legacy location)
+  if (config.docsEnabled && activeDocExists(repoRoot, config.docsDir, targetName, worktree.path)) {
     try {
-      const result = await archiveDoc(repoRoot, config.docsDir, targetName, branchToMerge);
+      const result = await archiveDoc(repoRoot, config.docsDir, targetName, branchToMerge, worktree.path);
       if (result.archived && result.path) {
         const relativePath = result.path.replace(repoRoot + "/", "");
         console.log(chalk.green(`✓ Archived doc: ${relativePath}`));
@@ -103,7 +107,13 @@ export async function finishCommand(
     }
   }
 
-  // 1. Merge the branch
+  // 1. Remove WORKTREE.md from git tracking to prevent merge conflicts
+  // (The doc content was already archived in step 0)
+  if (removeWorktreeDocFromGit(worktree.path)) {
+    console.log(chalk.green(`✓ Removed WORKTREE.md from git tracking`));
+  }
+
+  // 2. Merge the branch
   try {
     console.log(chalk.dim(`Merging ${branchToMerge}...`));
     if (options.message) {
@@ -119,21 +129,21 @@ export async function finishCommand(
     process.exit(1);
   }
 
-  // 2. Remove worktree
+  // 3. Remove worktree (use force since we're finishing - untracked files are expected)
   try {
-    removeWorktree(worktree.path, false);
+    removeWorktree(worktree.path, true);
     console.log(chalk.green(`✓ Removed worktree: ${worktree.path}`));
   } catch (error) {
-    console.error(chalk.red(`✗ Failed to remove worktree`));
-    console.log(chalk.dim("  The merge succeeded. Clean up manually with:"));
-    console.log(chalk.dim(`    git worktree remove "${worktree.path}"`));
-    process.exit(1);
+    // Don't exit - the merge succeeded, continue with remaining steps
+    console.error(chalk.yellow(`⚠ Could not remove worktree automatically`));
+    console.log(chalk.dim("  Clean up manually with:"));
+    console.log(chalk.dim(`    git worktree remove "${worktree.path}" --force`));
   }
 
-  // 3. Prune worktrees
+  // 4. Prune worktrees
   pruneWorktrees();
 
-  // 4. Delete the branch (default: true)
+  // 5. Delete the branch (default: true)
   const shouldDeleteBranch = options.deleteBranch !== false;
   if (shouldDeleteBranch) {
     try {
@@ -146,7 +156,17 @@ export async function finishCommand(
     }
   }
 
-  // 5. Push if requested
+  // 6. Commit doc changes (archived doc is now on main but not committed)
+  if (config.docsEnabled && hasChangesInPath(config.docsDir)) {
+    try {
+      commitDocChanges(config.docsDir, targetName);
+      console.log(chalk.green(`✓ Committed doc changes`));
+    } catch (error) {
+      console.log(chalk.yellow(`⚠ Could not commit doc changes`));
+    }
+  }
+
+  // 7. Push if requested
   if (options.push) {
     try {
       console.log(chalk.dim("Pushing to remote..."));
