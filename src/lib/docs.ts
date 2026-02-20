@@ -9,7 +9,13 @@ export const DOCS_ACTIVE_DIR = "active";
 export const DOCS_COMPLETED_DIR = "completed";
 export const DOCS_TEMPLATES_DIR = "templates";
 
-export const DEFAULT_TEMPLATE = `# {name}
+export const DEFAULT_TEMPLATE = `---
+tags: []
+domains: []
+related: []
+---
+
+# {name}
 
 **Branch:** \`{branch}\`
 **Created:** {date}
