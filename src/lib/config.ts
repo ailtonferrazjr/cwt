@@ -12,6 +12,9 @@ const DEFAULT_CONFIG: WorktreeConfig = {
   postSetupMessage: null,
   docsEnabled: true,
   docsDir: ".worktree-docs",
+  testCommands: [],
+  requireTestsOnFinish: false,
+  testTimeout: 300000, // 5 minutes
 };
 
 const CONFIG_FILENAMES = [".worktreerc.json", ".worktreerc"];
@@ -38,6 +41,9 @@ function mergeConfig(userConfig: Partial<WorktreeConfig>): WorktreeConfig {
     postSetupMessage: userConfig.postSetupMessage ?? DEFAULT_CONFIG.postSetupMessage,
     docsEnabled: userConfig.docsEnabled ?? DEFAULT_CONFIG.docsEnabled,
     docsDir: userConfig.docsDir ?? DEFAULT_CONFIG.docsDir,
+    testCommands: userConfig.testCommands ?? DEFAULT_CONFIG.testCommands,
+    requireTestsOnFinish: userConfig.requireTestsOnFinish ?? DEFAULT_CONFIG.requireTestsOnFinish,
+    testTimeout: userConfig.testTimeout ?? DEFAULT_CONFIG.testTimeout,
   };
 }
 

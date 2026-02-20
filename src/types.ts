@@ -15,6 +15,12 @@ export interface WorktreeConfig {
   docsEnabled: boolean;
   /** Directory for worktree documentation (relative to repo root) */
   docsDir: string;
+  /** Commands to run before finishing worktree (typecheck, lint, test) */
+  testCommands: string[];
+  /** Whether to require tests to pass before finishing */
+  requireTestsOnFinish: boolean;
+  /** Test execution timeout in milliseconds */
+  testTimeout: number;
 }
 
 export interface CreateOptions {

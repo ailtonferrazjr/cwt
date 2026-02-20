@@ -117,7 +117,14 @@ Create `.worktreerc.json` in your project root (or run `cwt init`):
   "docs": {
     "enabled": true,
     "dir": ".worktree-docs"
-  }
+  },
+  "testCommands": [
+    "pnpm typecheck",
+    "pnpm lint",
+    "pnpm test"
+  ],
+  "requireTestsOnFinish": true,
+  "testTimeout": 300000
 }
 ```
 
@@ -133,6 +140,9 @@ Create `.worktreerc.json` in your project root (or run `cwt init`):
 | `postSetupMessage` | Message shown after setup | `null` |
 | `docs.enabled` | Enable documentation tracking | `true` |
 | `docs.dir` | Documentation directory | `.worktree-docs` |
+| `testCommands` | Commands to run before finishing | `[]` |
+| `requireTestsOnFinish` | Require tests to pass before merge | `false` |
+| `testTimeout` | Test execution timeout (ms) | `300000` (5 min) |
 
 ### Defaults Without Config
 
@@ -157,14 +167,32 @@ When docs are enabled, cwt creates:
     └── 2024-01-15-my-feature.md  # Archived with timestamps
 ```
 
-Each doc includes sections for:
+Each doc includes:
+- **Frontmatter** - Metadata (tags, domains, related worktrees)
 - **Problem & Context** - What you're solving and why
 - **Plan** - Your approach
 - **Changes** - What was modified
 - **Testing** - How to verify
 - **Learnings** - Insights for future reference
+- **Commits** - Git commit history (auto-populated on finish)
 
-Completed docs include the commit history, providing rich context beyond commit messages.
+### Frontmatter
+
+Docs now include YAML frontmatter for better searchability:
+
+```yaml
+---
+tags: [backend, feature, api]
+domains: [deals, opportunities]
+related: []
+---
+```
+
+- **tags**: Technology/category tags (backend, frontend, bugfix, feature, refactor, etc.)
+- **domains**: Business domains touched (deals, calls, opportunities, etc.)
+- **related**: Names of related worktrees (auto-populated by `/cwt-search`)
+
+This metadata enables faster searching and better context discovery.
 
 ## Claude Code Integration
 
@@ -178,10 +206,35 @@ claude
 
 # Use custom commands (if configured)
 /cwt-start    # Load context, investigate, plan
-/cwt-end      # Review, commit, update doc, finish
+/cwt-end      # Review, test, commit, update doc, finish
 ```
 
 The documentation structure helps Claude understand context and track decisions across sessions.
+
+## Test Integration
+
+Configure automatic testing before merge with `testCommands`:
+
+```json
+{
+  "testCommands": [
+    "pnpm typecheck",
+    "pnpm lint",
+    "pnpm test"
+  ],
+  "requireTestsOnFinish": true,
+  "testTimeout": 300000
+}
+```
+
+When you run `cwt finish` (or `/cwt-end` in Claude Code):
+
+1. **All test commands run sequentially**
+2. **If `requireTestsOnFinish: true`** - merge is blocked if any test fails
+3. **If `requireTestsOnFinish: false`** - warns but allows skip with confirmation
+4. **Timeout protection** - tests are killed if they exceed `testTimeout`
+
+This ensures quality by preventing broken code from reaching main.
 
 ## Development
 
