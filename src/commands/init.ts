@@ -3,13 +3,13 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import chalk from "chalk";
 import { getRepoRoot } from "../lib/git.js";
-import { getDefaultConfig } from "../lib/config.js";
+import { getDefaultConfig, loadConfig } from "../lib/config.js";
 import { ensureDocsStructure, createDefaultTemplate } from "../lib/docs.js";
 
 const CONFIG_FILENAME = ".worktreerc.json";
 const GITIGNORE_ENTRY = ".worktrees/";
 
-async function addToGitignore(repoRoot: string): Promise<boolean> {
+export async function addToGitignore(repoRoot: string): Promise<boolean> {
   const gitignorePath = join(repoRoot, ".gitignore");
 
   // Check if .gitignore exists and already has the entry
@@ -63,8 +63,8 @@ export async function initCommand(options: { force?: boolean }): Promise<void> {
     console.log(chalk.dim(`  .gitignore already contains ${GITIGNORE_ENTRY}`));
   }
 
-  // Initialize docs structure
-  const config = getDefaultConfig();
+  // Initialize docs structure (respects a custom docsDir in an existing config)
+  const config = await loadConfig(repoRoot);
   await ensureDocsStructure(repoRoot, config.docsDir);
   console.log(chalk.green(`✓ Created ${config.docsDir}/ structure`));
 

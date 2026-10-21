@@ -1,15 +1,16 @@
 import { readFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import chalk from "chalk";
 import { getRepoRoot, listWorktrees } from "../lib/git.js";
-import { loadConfig, resolveWorktreeDir } from "../lib/config.js";
+import { loadConfig } from "../lib/config.js";
 import {
   getDocsDir,
   DOCS_ACTIVE_DIR,
   DOCS_COMPLETED_DIR,
-  WORKTREE_DOC_FILENAME,
   getWorktreeDocPath,
+  findCompletedDoc,
+  parseCompletedDocFilename,
 } from "../lib/docs.js";
 
 export interface DocsOptions {
@@ -32,17 +33,11 @@ async function listCompletedDocs(dir: string): Promise<DocEntry[]> {
   const files = await readdir(dir);
   return files
     .filter((f) => f.endsWith(".md"))
-    .map((f) => {
-      const name = f.replace(".md", "");
-      // For completed docs, extract date from filename (YYYY-MM-DD-name.md)
-      const dateMatch = name.match(/^(\d{4}-\d{2}-\d{2})-(.+)$/);
-      return {
-        name: dateMatch ? dateMatch[2] : name,
-        path: join(dir, f),
-        type: "completed" as const,
-        date: dateMatch ? dateMatch[1] : undefined,
-      };
-    })
+    .map((f) => ({
+      ...parseCompletedDocFilename(f),
+      path: join(dir, f),
+      type: "completed" as const,
+    }))
     .sort((a, b) => {
       if (a.date && b.date) {
         return b.date.localeCompare(a.date);
@@ -65,7 +60,7 @@ async function listActiveDocs(repoRoot: string): Promise<DocEntry[]> {
     const docPath = getWorktreeDocPath(wt.path);
     if (existsSync(docPath)) {
       // Extract worktree name from path (last segment)
-      const name = wt.path.split("/").pop() || wt.branch || "unknown";
+      const name = basename(wt.path) || wt.branch || "unknown";
       activeDocs.push({
         name,
         path: docPath,
@@ -121,7 +116,8 @@ export async function docsListCommand(options: DocsOptions): Promise<void> {
     console.log(chalk.blue.bold("\nCompleted"));
     console.log(chalk.dim("─".repeat(40)));
     for (const doc of completedDocs) {
-      console.log(`  ${chalk.dim("○")} ${doc.name} ${chalk.dim(`(${doc.date})`)}`);
+      const date = doc.date ? ` ${chalk.dim(`(${doc.date})`)}` : "";
+      console.log(`  ${chalk.dim("○")} ${doc.name}${date}`);
     }
   }
 
@@ -137,7 +133,7 @@ export async function docsViewCommand(name: string): Promise<void> {
   const worktrees = listWorktrees();
   for (const wt of worktrees) {
     if (wt.path === repoRoot) continue;
-    const wtName = wt.path.split("/").pop();
+    const wtName = basename(wt.path);
     if (wtName === name) {
       const docPath = getWorktreeDocPath(wt.path);
       if (existsSync(docPath)) {
@@ -153,9 +149,7 @@ export async function docsViewCommand(name: string): Promise<void> {
   const completedDir = join(docsDir, DOCS_COMPLETED_DIR);
   if (existsSync(completedDir)) {
     const files = await readdir(completedDir);
-    const matchingFile = files.find(
-      (f) => f.endsWith(`-${name}.md`) || f === `${name}.md`
-    );
+    const matchingFile = findCompletedDoc(files, name);
 
     if (matchingFile) {
       const content = await readFile(join(completedDir, matchingFile), "utf-8");
@@ -179,7 +173,7 @@ export async function docsOpenCommand(name: string): Promise<void> {
   const worktrees = listWorktrees();
   for (const wt of worktrees) {
     if (wt.path === repoRoot) continue;
-    const wtName = wt.path.split("/").pop();
+    const wtName = basename(wt.path);
     if (wtName === name) {
       const docPath = getWorktreeDocPath(wt.path);
       if (existsSync(docPath)) {
@@ -193,9 +187,7 @@ export async function docsOpenCommand(name: string): Promise<void> {
   const completedDir = join(docsDir, DOCS_COMPLETED_DIR);
   if (existsSync(completedDir)) {
     const files = await readdir(completedDir);
-    const matchingFile = files.find(
-      (f) => f.endsWith(`-${name}.md`) || f === `${name}.md`
-    );
+    const matchingFile = findCompletedDoc(files, name);
 
     if (matchingFile) {
       console.log(join(completedDir, matchingFile));

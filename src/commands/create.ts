@@ -17,6 +17,10 @@ import { runSetupCommands } from "../lib/setup.js";
 import { createDocFromTemplate } from "../lib/docs.js";
 
 function copyToClipboard(text: string): boolean {
+  // Only touch the clipboard in an interactive terminal
+  if (!process.stdout.isTTY || process.env.CWT_NO_CLIPBOARD) {
+    return false;
+  }
   try {
     const platform = process.platform;
     if (platform === "darwin") {
@@ -93,7 +97,7 @@ export async function createCommand(
   // Create documentation file in the worktree
   if (config.docsEnabled) {
     try {
-      const docPath = await createDocFromTemplate(
+      await createDocFromTemplate(
         repoRoot,
         config.docsDir,
         name,
@@ -123,7 +127,7 @@ export async function createCommand(
   }
 
   // Run setup commands
-  if (!options.noInstall) {
+  if (options.install !== false) {
     let commands = config.setupCommands;
 
     // If no custom commands, auto-detect package manager

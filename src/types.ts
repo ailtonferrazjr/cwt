@@ -26,7 +26,8 @@ export interface WorktreeConfig {
 export interface CreateOptions {
   branch?: string;
   dir?: string;
-  noInstall?: boolean;
+  /** Set to false by commander when --no-install is passed */
+  install?: boolean;
 }
 
 export interface RemoveOptions {
