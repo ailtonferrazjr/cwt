@@ -77,8 +77,8 @@ Knowledge to preserve:
 
 <!--
 Link to previous work this builds on or relates to:
-- [worktree-name](../completed/YYYY-MM-DD-worktree-name.md) - brief description
-Use /cwt-search to find relevant past work
+- [worktree-name](../completed/YYYY-MM-DD-worktree-name.md): brief description
+Run cwt docs to list past work
 -->
 
 ---
