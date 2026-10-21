@@ -1,17 +1,47 @@
 {
-  "name": "cwt",
+  "name": "@ailtonferrazjr/cwt",
   "version": "1.0.0",
-  "description": "CLI tool for managing git worktrees with automatic environment setup",
+  "description": "Git worktree CLI that copies env files, runs setup, and keeps a WORKTREE.md doc per branch for PRs and AI coding sessions",
+  "keywords": [
+    "git",
+    "worktree",
+    "git-worktree",
+    "cli",
+    "developer-tools",
+    "claude-code",
+    "ai",
+    "pull-request"
+  ],
+  "homepage": "https://github.com/ailtonferrazjr/cwt#readme",
+  "bugs": {
+    "url": "https://github.com/ailtonferrazjr/cwt/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ailtonferrazjr/cwt.git"
+  },
+  "license": "MIT",
+  "author": "Justin Ferraz",
   "type": "module",
   "bin": {
-    "cwt": "./dist/index.js"
+    "cwt": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "pnpm typecheck && pnpm test && rm -rf dist && pnpm build"
   },
   "dependencies": {
     "chalk": "^5.3.0",
@@ -22,8 +52,5 @@
     "@types/node": "^22.10.0",
     "typescript": "^5.7.0",
     "vitest": "4.1.11"
-  },
-  "engines": {
-    "node": ">=20"
   }
 }
