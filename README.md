@@ -1,250 +1,235 @@
-# cwt (Claude Worktree)
+# cwt
 
-A CLI tool for managing git worktrees with automatic environment setup and documentation tracking.
+[![CI](https://github.com/ailtonferrazjr/cwt/actions/workflows/ci.yml/badge.svg)](https://github.com/ailtonferrazjr/cwt/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-## Why cwt?
+cwt ("Claude Worktree") is a CLI for working on several branches at once with git worktrees. It handles the setup chores that make worktrees tedious, and keeps a short `WORKTREE.md` per branch that becomes your PR description and a searchable record once the work is merged.
 
-Git worktrees let you work on multiple branches simultaneously without stashing or switching. cwt automates the tedious parts:
+I built it to run several Claude Code sessions in parallel, one per worktree, but nothing in it depends on Claude.
 
-- **Environment setup** - Automatically copies `.env` files and runs install commands
-- **Documentation tracking** - Creates structured docs for each worktree to capture context, decisions, and learnings
-- **GitHub integration** - Generate PRs directly from worktree documentation
-- **Context awareness** - Commands like `cwt finish --self` detect when you're inside a worktree
+## What it does
 
-## Prerequisites
+- **Creates ready-to-run worktrees.** `cwt create` adds the worktree and branch, copies your untracked `.env` files and `.claude/` settings, and runs your install or setup commands.
+- **Keeps a doc per worktree.** Each worktree gets a `WORKTREE.md` (Problem, Context, Plan, Changes, Testing, Learnings) from a template you can customize.
+- **Finishes in one step.** `cwt finish` runs your test commands, merges the branch, archives the doc with its commit list into `.worktree-docs/completed/`, removes the worktree and deletes the branch.
+- **Opens PRs from the doc.** `cwt pr` pushes the branch and calls `gh pr create` with a body built from the doc.
+- **Knows where you are.** `--self` on `finish` and `pr` works out the worktree from your current directory.
 
-- Node.js >= 20
-- Git
-- A package manager (pnpm, npm, yarn, or bun)
-- GitHub CLI (`gh`) for PR creation (optional)
+## Install
 
-## Installation
+Requires Node.js 20 or newer and git. `cwt pr` also needs the [GitHub CLI](https://cli.github.com/).
+
+From source (works today):
 
 ```bash
-# Clone the repository
-git clone https://github.com/ailtonferrazjr/cwt
+git clone https://github.com/ailtonferrazjr/cwt.git
 cd cwt
-
-# Install dependencies
 pnpm install
-
-# Build
 pnpm build
-
-# Link globally
-npm link
+npm link          # puts `cwt` on your PATH
 ```
 
-After linking, `cwt` will be available globally in your terminal.
-
-## Quick Start
+Once published to npm (the unscoped `cwt` name is taken, so the package is scoped):
 
 ```bash
-# Initialize cwt in your project
-cd your-project
-cwt init
-
-# Create a worktree for a feature
-cwt create my-feature
-
-# Work in the worktree
-cd .worktrees/my-feature
-
-# ... make your changes, commit them ...
-
-# Finish: merge to main, cleanup worktree
-cwt finish --self -m "feat: implement my feature"
+npm install -g @ailtonferrazjr/cwt
+# or run it without installing
+npx @ailtonferrazjr/cwt --help
 ```
+
+## Demo
+
+A typical session in a project called `acme-api`:
+
+```text
+$ cwt init
+✓ Created .worktreerc.json
+✓ Added .worktrees/ to .gitignore
+✓ Created .worktree-docs/ structure
+✓ Created worktree documentation template
+
+$ cwt create fix-login-redirect
+Creating worktree at /code/acme-api/.worktrees/fix-login-redirect
+Preparing worktree (new branch 'fix-login-redirect')
+✓ Created worktree
+✓ Created branch: fix-login-redirect
+✓ Created doc: WORKTREE.md
+✓ Copied .env
+
+Running setup commands...
+✓ pnpm install
+
+✓ Setup complete!
+
+cd /code/acme-api/.worktrees/fix-login-redirect (copied to clipboard)
+
+$ cd .worktrees/fix-login-redirect
+# edit code, fill in WORKTREE.md, commit as usual
+
+$ cwt pr --self --draft
+✓ Found documentation: WORKTREE.md
+✓ Pushed branch: fix-login-redirect
+Creating pull request...
+https://github.com/acme/acme-api/pull/42
+✓ Pull request created!
+
+$ cwt finish --self
+Detected worktree: fix-login-redirect
+Switching to main repo: /code/acme-api
+
+Finishing worktree: /code/acme-api/.worktrees/fix-login-redirect
+Branch: fix-login-redirect
+
+✓ Archived doc: .worktree-docs/completed/2026-10-21-fix-login-redirect.md
+✓ Merged branch: fix-login-redirect
+✓ Removed worktree: /code/acme-api/.worktrees/fix-login-redirect
+✓ Deleted branch: fix-login-redirect
+✓ Committed doc changes
+
+✓ Finish complete!
+```
+
+`cwt init` is optional. Without a config file cwt uses the defaults listed under [Configuration](#configuration).
 
 ## Commands
 
-### Worktree Management
+| Command | What it does |
+|---------|--------------|
+| `cwt init [-f]` | Write `.worktreerc.json` with defaults, add `.worktrees/` to `.gitignore`, create the docs folders and template. `-f` overwrites an existing config. |
+| `cwt create <name>` | Create a worktree and branch, write `WORKTREE.md`, copy env files, run setup commands. |
+| `cwt list` (`ls`) | List all worktrees with branch, commit and lock state. |
+| `cwt remove <name>` (`rm`) | Remove a worktree without merging. Refuses if there are uncommitted changes other than `WORKTREE.md`. |
+| `cwt finish [name]` | Test, merge into the current branch, archive the doc, remove the worktree, delete the branch. |
+| `cwt pr [name]` | Push the current branch and open a GitHub PR from `WORKTREE.md`. |
+| `cwt docs` / `cwt docs list` | List active and completed docs. |
+| `cwt docs view <name>` | Print a doc. Active docs take precedence over archived ones. |
+| `cwt docs path <name>` | Print the path to a doc, handy for `$EDITOR $(cwt docs path x)`. |
+| `cwt config` | Show the effective configuration for the current repo. |
 
-```bash
-cwt init                       # Initialize project (config + docs structure)
-cwt create <name>              # Create worktree with auto setup
-cwt create <name> -b <branch>  # Create with specific branch name
-cwt create <name> --no-install # Skip package installation
-cwt list                       # List all worktrees
-cwt finish <name>              # Merge and cleanup from main repo
-cwt finish --self              # Merge and cleanup from within worktree
-cwt finish --self -m "msg"     # With custom merge message
-cwt finish <name> -p           # Finish and push to remote
-cwt remove <name>              # Remove without merging
-cwt remove <name> -D           # Remove and delete branch
-cwt config                     # Show effective configuration
+`<name>` can be the worktree folder name, the branch name, or a path.
+
+### Options
+
+```text
+cwt create <name>
+  -b, --branch <branch>   Branch name (default: branchPrefix + name)
+  -d, --dir <directory>   Custom worktree location
+  --no-install            Skip setup commands
+
+cwt remove <name>
+  -f, --force             Remove even with uncommitted changes; with -D, force-delete the branch
+  -D, --delete-branch     Also delete the branch
+
+cwt finish [name]
+  -s, --self              Use the worktree you are currently in
+  -m, --message <msg>     Merge commit message
+  -p, --push              Push after merging
+  --no-delete-branch      Keep the branch
+
+cwt pr [name]
+  -s, --self              Use the worktree you are currently in
+  -d, --draft             Open as a draft
+  -w, --web               Open the PR in the browser
+
+cwt docs list
+  -a, --active            Only active docs
+  -c, --completed         Only completed docs
 ```
 
-### Documentation
-
-```bash
-cwt docs                       # List all worktree docs
-cwt docs -a                    # List active docs only
-cwt docs -c                    # List completed docs only
-cwt docs view <name>           # View documentation content
-cwt docs path <name>           # Print path to doc file
-```
-
-### GitHub PRs
-
-```bash
-cwt pr --self                  # Create PR using worktree doc
-cwt pr --self -d               # Create as draft PR
-cwt pr --self -w               # Open in browser after creation
-```
+Run `cwt pr` from inside the worktree. It pushes whatever branch is checked out where you run it.
 
 ## Configuration
 
-Create `.worktreerc.json` in your project root (or run `cwt init`):
+Settings live in `.worktreerc.json` (or `.worktreerc`) at the repo root. Every key is optional.
 
 ```json
 {
-  "copyFiles": [
-    ".env",
-    ".env.local",
-    "prisma/.env"
-  ],
-  "copyPatterns": [
-    ".env*"
-  ],
-  "setupCommands": [
-    "pnpm install",
-    "pnpm db:generate"
-  ],
+  "copyFiles": [".env", ".env.local", "prisma/.env"],
+  "copyPatterns": [".claude/**"],
+  "setupCommands": ["pnpm install", "pnpm db:generate"],
   "worktreeDir": ".worktrees/{name}",
   "branchPrefix": "feature/",
-  "postSetupMessage": "Ready! Run 'pnpm dev' to start.",
-  "docs": {
-    "enabled": true,
-    "dir": ".worktree-docs"
-  },
-  "testCommands": [
-    "pnpm typecheck",
-    "pnpm lint",
-    "pnpm test"
-  ],
+  "postSetupMessage": "Ready. Run 'pnpm dev' to start.",
+  "docsEnabled": true,
+  "docsDir": ".worktree-docs",
+  "testCommands": ["pnpm typecheck", "pnpm test"],
   "requireTestsOnFinish": true,
   "testTimeout": 300000
 }
 ```
-
-### Configuration Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `copyFiles` | Explicit files to copy | `[".env", ".env.local", ".env.development", ".env.development.local"]` |
-| `copyPatterns` | Glob patterns for files | `[]` |
-| `setupCommands` | Commands to run after creation | Auto-detected install command |
-| `worktreeDir` | Directory pattern (`{name}` placeholder) | `.worktrees/{name}` |
-| `branchPrefix` | Default branch prefix | `""` |
-| `postSetupMessage` | Message shown after setup | `null` |
-| `docs.enabled` | Enable documentation tracking | `true` |
-| `docs.dir` | Documentation directory | `.worktree-docs` |
-| `testCommands` | Commands to run before finishing | `[]` |
-| `requireTestsOnFinish` | Require tests to pass before merge | `false` |
-| `testTimeout` | Test execution timeout (ms) | `300000` (5 min) |
+| `copyFiles` | Files to copy from the main repo into new worktrees. Missing files are skipped. | `.env`, `.env.local`, `.env.development`, `.env.development.local` |
+| `copyPatterns` | Glob patterns to copy, dotfiles included. | `[".claude/**"]` |
+| `setupCommands` | Commands run in the new worktree, in order, stopping at the first failure. | Install command for the detected package manager |
+| `worktreeDir` | Where worktrees go, relative to the repo root. Supports `{name}` and `{repo}`. | `.worktrees/{name}` |
+| `branchPrefix` | Prefix for new branches. | `""` |
+| `postSetupMessage` | Printed after `create` finishes. | `null` |
+| `docsEnabled` | Create and archive `WORKTREE.md` docs. | `true` |
+| `docsDir` | Folder for the template and archived docs. | `.worktree-docs` |
+| `testCommands` | Commands run inside the worktree before `finish` merges. | `[]` |
+| `requireTestsOnFinish` | Block the merge when a test command fails. When off, cwt warns and continues. | `false` |
+| `testTimeout` | Per-command timeout in milliseconds. | `300000` |
 
-### Defaults Without Config
+The package manager is detected from the lockfile: `pnpm-lock.yaml`, `yarn.lock`, `bun.lockb`, then `package-lock.json`.
 
-Without a config file, cwt will:
-1. Copy common env files (`.env`, `.env.local`, etc.)
-2. Auto-detect your package manager from lockfiles
-3. Run the appropriate install command
-4. Create worktrees at `.worktrees/{name}`
-5. Create documentation in `.worktree-docs/`
+`--self` relies on the worktree living under a `.worktrees/` folder, so keep that in `worktreeDir` if you use it.
 
-## Documentation Structure
+## How it works
 
-When docs are enabled, cwt creates:
+cwt is a thin layer over `git worktree`. It does not keep state of its own beyond the files below.
 
-```
-.worktree-docs/
-├── templates/
-│   └── worktree.md       # Customizable template
-├── active/
-│   └── my-feature.md     # Docs for in-progress worktrees
-└── completed/
-    └── 2024-01-15-my-feature.md  # Archived with timestamps
+```text
+your-repo/
+├── .worktreerc.json
+├── .worktrees/                  # gitignored
+│   └── fix-login-redirect/      # a normal git worktree
+│       └── WORKTREE.md          # untracked, lives only in the worktree
+└── .worktree-docs/              # committed
+    ├── templates/worktree.md    # template for new docs
+    └── completed/
+        └── 2026-10-21-fix-login-redirect.md
 ```
 
-Each doc includes:
-- **Frontmatter** - Metadata (tags, domains, related worktrees)
-- **Problem & Context** - What you're solving and why
-- **Plan** - Your approach
-- **Changes** - What was modified
-- **Testing** - How to verify
-- **Learnings** - Insights for future reference
-- **Commits** - Git commit history (auto-populated on finish)
+**create** runs `git worktree add` (with `-b` if the branch is new), renders the template into `WORKTREE.md` by filling `{name}`, `{branch}` and `{date}`, copies the configured files, and runs the setup commands in the new worktree.
 
-### Frontmatter
+**finish** does, in order:
 
-Docs now include YAML frontmatter for better searchability:
+1. Refuses if the worktree has uncommitted changes besides `WORKTREE.md`, or is locked or detached.
+2. Runs `testCommands` in the worktree, if any.
+3. Copies `WORKTREE.md` to `completed/YYYY-MM-DD-<name>.md` and fills in the completion time and the branch's commits (`git log <base>..<branch>`).
+4. Untracks `WORKTREE.md` on the branch if it was committed, so the merge cannot conflict on it.
+5. Merges the branch into whatever is checked out in the main repo.
+6. Removes the worktree, prunes, deletes the branch with `git branch -d`, and commits the archived doc.
+7. Pushes, if `--push` was given.
 
-```yaml
----
-tags: [backend, feature, api]
-domains: [deals, opportunities]
-related: []
----
-```
+**pr** reads the Problem, Changes (or Plan, as "Approach") and Testing sections of the doc, drops HTML comments and empty sections, and passes the result to `gh pr create`. The title comes from the worktree name: `fix-login-redirect` becomes "Fix Login Redirect".
 
-- **tags**: Technology/category tags (backend, frontend, bugfix, feature, refactor, etc.)
-- **domains**: Business domains touched (deals, calls, opportunities, etc.)
-- **related**: Names of related worktrees (auto-populated by `/cwt-search`)
+See [examples/WORKTREE.md](examples/WORKTREE.md) for a filled-in doc after `finish`.
 
-This metadata enables faster searching and better context discovery.
+### Using it with Claude Code
 
-## Claude Code Integration
+Each worktree is a separate checkout, so you can run one Claude Code session per worktree without them stepping on each other. `.claude/**` is copied by default, so local settings and custom commands follow you into every worktree.
 
-cwt pairs well with Claude Code for AI-assisted development:
-
-```bash
-# Create worktree and start Claude
-cwt create my-feature
-cd .worktrees/my-feature
-claude
-
-# Use custom commands (if configured)
-/cwt-start    # Load context, investigate, plan
-/cwt-end      # Review, test, commit, update doc, finish
-```
-
-The documentation structure helps Claude understand context and track decisions across sessions.
-
-## Test Integration
-
-Configure automatic testing before merge with `testCommands`:
-
-```json
-{
-  "testCommands": [
-    "pnpm typecheck",
-    "pnpm lint",
-    "pnpm test"
-  ],
-  "requireTestsOnFinish": true,
-  "testTimeout": 300000
-}
-```
-
-When you run `cwt finish` (or `/cwt-end` in Claude Code):
-
-1. **All test commands run sequentially**
-2. **If `requireTestsOnFinish: true`** - merge is blocked if any test fails
-3. **If `requireTestsOnFinish: false`** - warns but allows skip with confirmation
-4. **Timeout protection** - tests are killed if they exceed `testTimeout`
-
-This ensures quality by preventing broken code from reaching main.
+cwt does not ship slash commands. A useful pattern is a project command that tells Claude to read `WORKTREE.md` at the start of a session and update its Changes, Testing and Learnings sections before you run `cwt finish`. The archived docs in `.worktree-docs/completed/` then give future sessions context on past work.
 
 ## Development
 
 ```bash
-pnpm install      # Install dependencies
-pnpm dev          # Watch mode (auto-rebuild on changes)
-pnpm build        # Build once
-pnpm typecheck    # Type checking only
+pnpm install
+pnpm dev          # tsc in watch mode
+pnpm typecheck
+pnpm test         # vitest: unit tests plus integration tests against temp git repos
+pnpm build
 ```
+
+Integration tests create throwaway repositories in the OS temp directory and run the real CLI against them with an isolated git config.
+
+## Contributing
+
+Issues and pull requests are welcome. For anything bigger than a fix, open an issue first so we can agree on the approach. Please run `pnpm typecheck && pnpm test` before opening a PR, and add a test for behavior changes. Planned work is listed in [ROADMAP.md](ROADMAP.md).
 
 ## License
 
-MIT
+[MIT](LICENSE)
