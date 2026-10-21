@@ -11,8 +11,7 @@ export async function runSetupCommand(
   cwd: string
 ): Promise<SetupResult> {
   return new Promise((resolve) => {
-    const [cmd, ...args] = command.split(" ");
-    const proc = spawn(cmd, args, {
+    const proc = spawn(command, {
       cwd,
       stdio: "inherit",
       shell: true,

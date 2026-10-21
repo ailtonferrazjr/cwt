@@ -24,14 +24,20 @@ export async function loadConfig(projectDir: string): Promise<WorktreeConfig> {
     const configPath = join(projectDir, filename);
     if (existsSync(configPath)) {
       const content = await readFile(configPath, "utf-8");
-      const userConfig = JSON.parse(content) as Partial<WorktreeConfig>;
+      let userConfig: Partial<WorktreeConfig>;
+      try {
+        userConfig = JSON.parse(content) as Partial<WorktreeConfig>;
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new Error(`Invalid JSON in ${configPath}: ${reason}`);
+      }
       return mergeConfig(userConfig);
     }
   }
-  return DEFAULT_CONFIG;
+  return getDefaultConfig();
 }
 
-function mergeConfig(userConfig: Partial<WorktreeConfig>): WorktreeConfig {
+export function mergeConfig(userConfig: Partial<WorktreeConfig>): WorktreeConfig {
   return {
     copyFiles: userConfig.copyFiles ?? DEFAULT_CONFIG.copyFiles,
     copyPatterns: userConfig.copyPatterns ?? DEFAULT_CONFIG.copyPatterns,
@@ -48,7 +54,13 @@ function mergeConfig(userConfig: Partial<WorktreeConfig>): WorktreeConfig {
 }
 
 export function getDefaultConfig(): WorktreeConfig {
-  return { ...DEFAULT_CONFIG };
+  return {
+    ...DEFAULT_CONFIG,
+    copyFiles: [...DEFAULT_CONFIG.copyFiles],
+    copyPatterns: [...DEFAULT_CONFIG.copyPatterns],
+    setupCommands: [...DEFAULT_CONFIG.setupCommands],
+    testCommands: [...DEFAULT_CONFIG.testCommands],
+  };
 }
 
 export function resolveWorktreeDir(
@@ -56,5 +68,5 @@ export function resolveWorktreeDir(
   name: string,
   repoName: string
 ): string {
-  return pattern.replace("{name}", name).replace("{repo}", repoName);
+  return pattern.replaceAll("{name}", name).replaceAll("{repo}", repoName);
 }

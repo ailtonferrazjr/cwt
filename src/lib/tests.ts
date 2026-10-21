@@ -1,4 +1,4 @@
-import { execSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import chalk from "chalk";
 
 export interface TestResult {
@@ -29,8 +29,7 @@ export async function runTestCommand(
   const startTime = Date.now();
 
   return new Promise((resolve) => {
-    const [cmd, ...args] = command.split(" ");
-    const child = spawn(cmd, args, {
+    const child = spawn(command, {
       cwd,
       shell: true,
       stdio: "pipe",

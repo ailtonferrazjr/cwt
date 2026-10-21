@@ -1,5 +1,5 @@
 import { execSync, spawnSync } from "node:child_process";
-import { basename } from "node:path";
+import { basename, resolve } from "node:path";
 import type { WorktreeInfo } from "../types.js";
 
 export function getRepoRoot(): string {
@@ -95,6 +95,13 @@ export function deleteBranch(branch: string, force: boolean): void {
 
 export function listWorktrees(): WorktreeInfo[] {
   const output = execSync("git worktree list --porcelain", { encoding: "utf-8" });
+  return parseWorktreeList(output);
+}
+
+/**
+ * Parse the output of `git worktree list --porcelain`.
+ */
+export function parseWorktreeList(output: string): WorktreeInfo[] {
   const worktrees: WorktreeInfo[] = [];
   let current: Partial<WorktreeInfo> = {};
 
@@ -122,6 +129,25 @@ export function listWorktrees(): WorktreeInfo[] {
   }
 
   return worktrees;
+}
+
+/**
+ * Find a worktree by directory name, branch name, or path.
+ */
+export function findWorktree(
+  worktrees: WorktreeInfo[],
+  name: string,
+  cwd: string = process.cwd()
+): WorktreeInfo | undefined {
+  return worktrees.find((wt) => {
+    const pathName = basename(wt.path);
+    return (
+      pathName === name ||
+      wt.branch === name ||
+      wt.path === name ||
+      wt.path === resolve(cwd, name)
+    );
+  });
 }
 
 export function pruneWorktrees(): void {
@@ -163,8 +189,7 @@ export interface WorktreeContext {
  * Detect if the current directory is inside a .worktrees/ folder
  * Returns context about the worktree location
  */
-export function detectWorktreeContext(): WorktreeContext {
-  const cwd = process.cwd();
+export function detectWorktreeContext(cwd: string = process.cwd()): WorktreeContext {
   const worktreesMarker = "/.worktrees/";
 
   const markerIndex = cwd.indexOf(worktreesMarker);
@@ -231,9 +256,6 @@ export function hasChangesInPath(path: string): boolean {
 }
 
 /**
- * Commit doc changes after finishing a worktree
- */
-/**
  * Check if a worktree has uncommitted changes (excluding WORKTREE.md)
  */
 export function hasUncommittedChanges(worktreePath: string): boolean {
@@ -286,6 +308,9 @@ export function removeWorktreeDocFromGit(worktreePath: string): boolean {
   return commitResult.status === 0;
 }
 
+/**
+ * Commit doc changes after finishing a worktree
+ */
 export function commitDocChanges(docsDir: string, worktreeName: string): void {
   // Stage only the docs directory (using -- to ensure it's treated as a path)
   const addResult = spawnSync("git", ["add", "--", docsDir], {
