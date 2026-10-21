@@ -1,8 +1,7 @@
-import { readFile, writeFile, mkdir, rename, copyFile } from "node:fs/promises";
+import { readFile, writeFile, mkdir, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { execSync, spawnSync } from "node:child_process";
-import type { WorktreeDocMetadata } from "../types.js";
+import { spawnSync } from "node:child_process";
 
 export const DOCS_TEMPLATE_FILE = "worktree.md";
 export const DOCS_ACTIVE_DIR = "active";
@@ -124,12 +123,82 @@ export function getTemplatePath(repoRoot: string, docsDir: string): string {
   return join(repoRoot, docsDir, DOCS_TEMPLATES_DIR, DOCS_TEMPLATE_FILE);
 }
 
-function formatDateForFilename(date: Date): string {
+export function formatDateForFilename(date: Date): string {
   return date.toISOString().split("T")[0];
 }
 
-function formatDateForDisplay(date: Date): string {
+export function formatDateForDisplay(date: Date): string {
   return date.toISOString().replace("T", " ").split(".")[0];
+}
+
+/**
+ * Fill the {name}, {branch} and {date} placeholders of a doc template.
+ */
+export function renderTemplate(
+  template: string,
+  vars: { name: string; branch: string; date: Date }
+): string {
+  return template
+    .replace(/\{name\}/g, vars.name)
+    .replace(/\{branch\}/g, vars.branch)
+    .replace(/\{date\}/g, formatDateForDisplay(vars.date));
+}
+
+export const COMMITS_PLACEHOLDER = "<!-- Auto-populated on finish -->";
+
+/**
+ * Add the completion timestamp and commit list to a worktree doc.
+ * Docs created from the default template have a placeholder that gets
+ * replaced in place; custom docs get a completion section appended.
+ */
+export function addCompletionInfo(
+  content: string,
+  commits: string[],
+  completedAt: Date
+): string {
+  const completed = formatDateForDisplay(completedAt);
+  const commitList = commits.map((c) => `- \`${c}\``).join("\n");
+
+  if (content.includes(COMMITS_PLACEHOLDER)) {
+    return content
+      .replace(COMMITS_PLACEHOLDER, commits.length > 0 ? commitList : "_No commits_")
+      .replace(/(\*\*Created:\*\* [^\n]+)/, `$1\n**Completed:** ${completed}`);
+  }
+
+  return `${content}
+---
+
+**Completed:** ${completed}
+
+### Commits
+
+${commits.length > 0 ? commitList : "_No commits found_"}
+`;
+}
+
+export interface CompletedDocName {
+  name: string;
+  date?: string;
+}
+
+/**
+ * Split an archived doc filename (YYYY-MM-DD-name.md) into date and name.
+ */
+export function parseCompletedDocFilename(filename: string): CompletedDocName {
+  const base = filename.replace(/\.md$/, "");
+  const match = base.match(/^(\d{4}-\d{2}-\d{2})-(.+)$/);
+  return match ? { name: match[2], date: match[1] } : { name: base };
+}
+
+/**
+ * Pick the archived doc for a worktree name. When the same name was
+ * finished more than once, the most recent doc wins.
+ */
+export function findCompletedDoc(files: string[], name: string): string | undefined {
+  return files
+    .filter((f) => f.endsWith(".md") && parseCompletedDocFilename(f).name === name)
+    .sort()
+    .pop();
 }
 
 export async function ensureDocsStructure(
@@ -188,11 +257,7 @@ export async function createDocFromTemplate(
     template = await readFile(templatePath, "utf-8");
   }
 
-  const now = new Date();
-  const content = template
-    .replace(/\{name\}/g, name)
-    .replace(/\{branch\}/g, branch)
-    .replace(/\{date\}/g, formatDateForDisplay(now));
+  const content = renderTemplate(template, { name, branch, date: new Date() });
 
   await writeFile(docPath, content, "utf-8");
 
@@ -277,40 +342,11 @@ export async function archiveDoc(
   const now = new Date();
   const completedPath = getCompletedDocPath(repoRoot, docsDir, name, now);
 
-  // Read current doc content
-  let content = await readFile(activeDocPath, "utf-8");
-
-  // Get commits for this branch
-  const baseBranch = getCurrentBaseBranch();
-  const commits = getCommitsForBranch(branch, baseBranch);
-
-  // Append completion metadata
-  const completionSection = `
----
-
-**Completed:** ${formatDateForDisplay(now)}
-
-### Commits
-
-${commits.length > 0 ? commits.map((c) => `- \`${c}\``).join("\n") : "_No commits found_"}
-`;
-
-  // Replace the commits placeholder section or append
-  if (content.includes("<!-- Auto-populated on finish -->")) {
-    content = content.replace(
-      "<!-- Auto-populated on finish -->",
-      commits.length > 0
-        ? commits.map((c) => `- \`${c}\``).join("\n")
-        : "_No commits_"
-    );
-    // Add completion timestamp at the top after the date
-    content = content.replace(
-      /(\*\*Created:\*\* [^\n]+)/,
-      `$1\n**Completed:** ${formatDateForDisplay(now)}`
-    );
-  } else {
-    content += completionSection;
-  }
+  const content = addCompletionInfo(
+    await readFile(activeDocPath, "utf-8"),
+    getCommitsForBranch(branch, getCurrentBaseBranch()),
+    now
+  );
 
   // Ensure completed directory exists
   await ensureDocsStructure(repoRoot, docsDir);
@@ -319,7 +355,6 @@ ${commits.length > 0 ? commits.map((c) => `- \`${c}\``).join("\n") : "_No commit
   await writeFile(completedPath, content, "utf-8");
 
   // Remove from active
-  const { unlink } = await import("node:fs/promises");
   await unlink(activeDocPath);
 
   return { archived: true, path: completedPath };

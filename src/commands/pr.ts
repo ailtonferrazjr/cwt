@@ -2,7 +2,8 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { execSync, spawnSync } from "node:child_process";
 import chalk from "chalk";
-import { loadConfig } from "../lib/config.js";
+import { loadConfig, resolveWorktreeDir } from "../lib/config.js";
+import { buildPrBody, parseDocForPr, titleFromName } from "../lib/pr.js";
 import {
   detectWorktreeContext,
   getRepoName,
@@ -16,62 +17,6 @@ export interface PrOptions {
   self?: boolean;
   draft?: boolean;
   web?: boolean;
-}
-
-interface ParsedDoc {
-  title: string;
-  problem: string;
-  plan: string;
-  changes: string;
-  testing: string;
-}
-
-function extractSection(content: string, sectionName: string): string {
-  // Match section header and capture until next ## or end of file
-  const regex = new RegExp(
-    `## ${sectionName}\\s*\\n([\\s\\S]*?)(?=\\n## |$)`,
-    "i"
-  );
-  const match = content.match(regex);
-
-  if (!match) {
-    return "";
-  }
-
-  // Remove HTML comments and trim
-  return match[1]
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .trim();
-}
-
-function parseDocForPr(content: string, name: string): ParsedDoc {
-  return {
-    title: name.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-    problem: extractSection(content, "Problem"),
-    plan: extractSection(content, "Plan"),
-    changes: extractSection(content, "Changes"),
-    testing: extractSection(content, "Testing"),
-  };
-}
-
-function buildPrBody(doc: ParsedDoc): string {
-  const sections: string[] = [];
-
-  if (doc.problem) {
-    sections.push(`## Problem\n\n${doc.problem}`);
-  }
-
-  if (doc.changes) {
-    sections.push(`## Changes\n\n${doc.changes}`);
-  } else if (doc.plan) {
-    sections.push(`## Approach\n\n${doc.plan}`);
-  }
-
-  if (doc.testing) {
-    sections.push(`## Testing\n\n${doc.testing}`);
-  }
-
-  return sections.join("\n\n");
 }
 
 function hasGhCli(): boolean {
@@ -147,14 +92,14 @@ export async function prCommand(
   // Determine worktree path for checking WORKTREE.md
   const worktreePath = options.self
     ? process.cwd()
-    : join(repoRoot, config.worktreeDir.replace("{name}", worktreeName).replace("{repo}", repoName));
+    : join(repoRoot, resolveWorktreeDir(config.worktreeDir, worktreeName, repoName));
 
   // Check for doc in WORKTREE.md first (new location), then fall back to legacy active dir
   const worktreeDocPath = getWorktreeDocPath(worktreePath);
   const legacyDocPath = getActiveDocPath(repoRoot, config.docsDir, worktreeName);
   const docPath = existsSync(worktreeDocPath) ? worktreeDocPath : legacyDocPath;
 
-  let prTitle = worktreeName.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  let prTitle = titleFromName(worktreeName);
   let prBody = "";
 
   if (existsSync(docPath)) {
