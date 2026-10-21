@@ -1,10 +1,10 @@
-import { resolve } from "node:path";
 import chalk from "chalk";
 import type { FinishOptions } from "../types.js";
 import {
   commitDocChanges,
   deleteBranch,
   detectWorktreeContext,
+  findWorktree,
   getRepoRoot,
   hasChangesInPath,
   hasUncommittedChanges,
@@ -18,6 +18,7 @@ import {
 } from "../lib/git.js";
 import { loadConfig } from "../lib/config.js";
 import { archiveDoc, activeDocExists } from "../lib/docs.js";
+import { printTestSummary, runTests } from "../lib/tests.js";
 
 export async function finishCommand(
   name: string | undefined,
@@ -56,15 +57,7 @@ export async function finishCommand(
   const worktrees = listWorktrees();
 
   // Find worktree by name (can match path or branch)
-  const worktree = worktrees.find((wt) => {
-    const pathName = wt.path.split("/").pop();
-    return (
-      pathName === targetName ||
-      wt.branch === targetName ||
-      wt.path === targetName ||
-      wt.path === resolve(targetName)
-    );
-  });
+  const worktree = findWorktree(worktrees, targetName);
 
   if (!worktree) {
     console.error(chalk.red(`Worktree not found: ${targetName}`));
@@ -106,8 +99,22 @@ export async function finishCommand(
     process.exit(1);
   }
 
-  // Load config for docs
   const config = await loadConfig(repoRoot);
+
+  // Run configured test commands inside the worktree before merging
+  if (config.testCommands.length > 0) {
+    console.log(chalk.blue("Running test commands...\n"));
+    const summary = await runTests(config.testCommands, worktree.path, config.testTimeout);
+    printTestSummary(summary);
+
+    if (!summary.success) {
+      if (config.requireTestsOnFinish) {
+        console.error(chalk.red("✗ Tests failed. Fix them before finishing (requireTestsOnFinish is on)."));
+        process.exit(1);
+      }
+      console.log(chalk.yellow("⚠ Tests failed, continuing because requireTestsOnFinish is off.\n"));
+    }
+  }
 
   // 0. Archive documentation (before merge so we can capture branch commits)
   // Pass worktree path so it can find the doc in WORKTREE.md (or fall back to legacy location)
