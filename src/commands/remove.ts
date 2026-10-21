@@ -1,11 +1,12 @@
-import { resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
 import chalk from "chalk";
 import type { RemoveOptions } from "../types.js";
 import {
   deleteBranch,
+  findWorktree,
   getRepoRoot,
+  hasUncommittedChanges,
   listWorktrees,
   pruneWorktrees,
   removeWorktree,
@@ -22,15 +23,7 @@ export async function removeCommand(
   const worktrees = listWorktrees();
 
   // Find worktree by name (can match path or branch)
-  const worktree = worktrees.find((wt) => {
-    const pathName = wt.path.split("/").pop();
-    return (
-      pathName === name ||
-      wt.branch === name ||
-      wt.path === name ||
-      wt.path === resolve(name)
-    );
-  });
+  const worktree = findWorktree(worktrees, name);
 
   if (!worktree) {
     console.error(chalk.red(`Worktree not found: ${name}`));
@@ -57,15 +50,20 @@ export async function removeCommand(
 
   const branchToDelete = worktree.branch;
 
+  // WORKTREE.md is always untracked, so git alone would refuse every removal.
+  // Check for real changes ourselves and let git force past the doc.
+  if (!options.force && hasUncommittedChanges(worktree.path)) {
+    console.error(chalk.red("Worktree has uncommitted changes"));
+    console.log(chalk.dim("  Commit or stash them, or use --force to discard them."));
+    process.exit(1);
+  }
+
   // Remove worktree
   try {
-    removeWorktree(worktree.path, options.force ?? false);
+    removeWorktree(worktree.path, true);
     console.log(chalk.green(`✓ Removed worktree: ${worktree.path}`));
   } catch (error) {
     console.error(chalk.red(`✗ Failed to remove worktree`));
-    if (!options.force) {
-      console.log(chalk.dim("  Tip: Use --force to remove with uncommitted changes"));
-    }
     process.exit(1);
   }
 
